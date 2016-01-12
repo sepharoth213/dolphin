@@ -56,7 +56,9 @@ bool MemoryWatcher::LoadAddresses(const std::string& path)
 
 MemoryWatcher::Address::Address(const std::string& line)
 {
-	currentValue = 0;
+	value = 0;
+
+	bits = X32;
 	offsets = std::vector<u32>();
 	bool aliasSet = false;
 
@@ -75,13 +77,13 @@ MemoryWatcher::Address::Address(const std::string& line)
     	int startPos = b.find_first_not_of(' ');
     	int endPos = b.find_first_of('b');
     	b = b.substr(startPos, endPos - startPos);
-	    bits = X32;
     	if(b == "8") bits = X8;
 	    if(b == "16") bits = X16;
 	    if(b == "64") bits = X64;
 
     	std::string temp;
     	ss >> temp;
+    	ss.get();
     }
     if(!aliasSet)
     {
@@ -103,15 +105,36 @@ bool MemoryWatcher::OpenSocket(const std::string& path)
 	return m_fd >= 0;
 }
 
-u32 MemoryWatcher::Address::Read()
+bool MemoryWatcher::Address::Read()
 {
-	u32 value = 0;
-	for (u32 offset : offsets)
-		value = Memory::Read_U32(value + offset);
-	return value;
+	u32 currentAddress = 0;
+	int length = offsets.size();
+	for (int i = 0; i < length; i++)
+	{
+		if(i == length - 1)
+		{
+			u64 oldValue = value;
+			switch(bits)
+			{
+			case(X8): value = Memory::Read_U8(currentAddress + offsets[i]);
+				break;
+			case(X16): value = Memory::Read_U16(currentAddress + offsets[i]);
+				break;
+			case(X64): value = Memory::Read_U64(currentAddress + offsets[i]);
+				break;
+			default: value = Memory::Read_U32(currentAddress + offsets[i]);
+			}
+			return (oldValue != value);
+		}
+		else
+		{
+			currentAddress = Memory::Read_U32(currentAddress + offsets[i]);
+		}
+	}
+	return false;
 }
 
-std::string MemoryWatcher::ComposeMessage(const std::string& alias, u32 value)
+std::string MemoryWatcher::Address::ComposeMessage()
 {
 	std::stringstream message_stream;
 	message_stream << alias << '\n' << std::hex << value;
@@ -125,12 +148,9 @@ void MemoryWatcher::WatcherThread()
 
 		for (Address& address : m_fileAddresses)
 		{
-			u32 new_value = address.Read();
-			if (new_value != address.currentValue)
+			if (address.Read())
 			{
-				// Update the value
-				address.currentValue = new_value;
-				std::string message = ComposeMessage(address.alias, new_value);
+				std::string message = address.ComposeMessage();
 				sendto(
 					m_fd,
 					message.c_str(),

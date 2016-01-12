@@ -39,19 +39,19 @@ private:
 	{
 		public:
 			Address(const std::string& line);
-			u32 Read();
+			bool Read();
+			std::string ComposeMessage();
 
 			std::vector<u32> offsets;
 			std::string alias;
 			int bits;
-			u32 currentValue;
+			u64 value;
 	};
 
 	bool LoadAddresses(const std::string& path);
 	bool OpenSocket(const std::string& path);
 
 	void ParseLine(const std::string& line);
-	std::string ComposeMessage(const std::string& line, u32 value);
 
 	void WatcherThread();
 
