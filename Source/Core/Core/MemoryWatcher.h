@@ -24,7 +24,6 @@ enum
 	X8,
 	X16,
 	X32,
-	X64,
 };
 
 class MemoryWatcher final
@@ -45,7 +44,7 @@ private:
 			std::vector<u32> offsets;
 			std::string alias;
 			int bits;
-			u64 value;
+			u32 value;
 	};
 
 	bool LoadAddresses(const std::string& path);
@@ -59,6 +58,7 @@ private:
 	std::atomic_bool m_running{false};
 
 	int m_fd = -1;
+	int m_pipe = -1;
 	sockaddr_un m_addr;
 
 	// // Address as stored in the file -> list of offsets to follow

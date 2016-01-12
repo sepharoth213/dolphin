@@ -21,7 +21,7 @@ MemoryWatcher::MemoryWatcher()
 		return;
 	if (!OpenSocket(File::GetUserPath(F_MEMORYWATCHERSOCKET_IDX)))
 		return;
-	// m_fd = open(File::GetUserPath(F_MEMORYWATCHERPIPE_IDX).c_str(), O_RDONLY | O_NONBLOCK);
+	m_pipe = open(File::GetUserPath(F_MEMORYWATCHERPIPE_IDX).c_str(), O_RDONLY | O_NONBLOCK);
 	m_running = true;
 	m_watcher_thread = std::thread(&MemoryWatcher::WatcherThread, this);
 }
@@ -79,7 +79,6 @@ MemoryWatcher::Address::Address(const std::string& line)
     	b = b.substr(startPos, endPos - startPos);
     	if(b == "8") bits = X8;
 	    if(b == "16") bits = X16;
-	    if(b == "64") bits = X64;
 
     	std::string temp;
     	ss >> temp;
@@ -113,14 +112,12 @@ bool MemoryWatcher::Address::Read()
 	{
 		if(i == length - 1)
 		{
-			u64 oldValue = value;
+			u32 oldValue = value;
 			switch(bits)
 			{
-			case(X8): value = Memory::Read_U8(currentAddress + offsets[i]);
+			case(X8): value = Memory::Read_U16(currentAddress + offsets[i]) & 0xFF;
 				break;
 			case(X16): value = Memory::Read_U16(currentAddress + offsets[i]);
-				break;
-			case(X64): value = Memory::Read_U64(currentAddress + offsets[i]);
 				break;
 			default: value = Memory::Read_U32(currentAddress + offsets[i]);
 			}
