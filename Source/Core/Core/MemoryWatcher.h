@@ -19,6 +19,14 @@
 // "ABCD EF" will watch the address at (*0xABCD) + 0xEF.
 // The output to the socket is two lines. The first is the address from the
 // input file, and the second is the new value in hex.
+enum
+{
+	X8,
+	X16,
+	X32,
+	X64,
+};
+
 class MemoryWatcher final
 {
 public:
@@ -26,11 +34,23 @@ public:
 	~MemoryWatcher();
 
 private:
+
+	class Address
+	{
+		public:
+			Address(const std::string& line);
+			u32 Read();
+
+			std::vector<u32> offsets;
+			std::string alias;
+			int bits;
+			u32 currentValue;
+	};
+
 	bool LoadAddresses(const std::string& path);
 	bool OpenSocket(const std::string& path);
 
 	void ParseLine(const std::string& line);
-	u32 ChasePointer(const std::string& line);
 	std::string ComposeMessage(const std::string& line, u32 value);
 
 	void WatcherThread();
@@ -38,11 +58,13 @@ private:
 	std::thread m_watcher_thread;
 	std::atomic_bool m_running{false};
 
-	int m_fd;
+	int m_fd = -1;
 	sockaddr_un m_addr;
 
-	// Address as stored in the file -> list of offsets to follow
-	std::map<std::string, std::vector<u32>> m_addresses;
+	// // Address as stored in the file -> list of offsets to follow
+	// std::map<std::string, std::vector<u32>> m_addresses;
 	// Address as stored in the file -> current value
-	std::map<std::string, u32> m_values;
+	std::vector<Address> m_fileAddresses;
+	// Address as requested by the pipe -> current value
+	// std::map<std::string, Address> m_pipeAddresses;
 };

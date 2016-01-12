@@ -97,6 +97,7 @@
 
 // Files in the directory returned by GetUserPath(D_MEMORYWATCHER_IDX)
 #define MEMORYWATCHER_LOCATIONS "Locations.txt"
+#define MEMORYWATCHER_PIPE      "pipe"
 #define MEMORYWATCHER_SOCKET    "MemoryWatcher"
 
 // Sys files

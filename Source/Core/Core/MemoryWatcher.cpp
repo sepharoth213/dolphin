@@ -21,6 +21,7 @@ MemoryWatcher::MemoryWatcher()
 		return;
 	if (!OpenSocket(File::GetUserPath(F_MEMORYWATCHERSOCKET_IDX)))
 		return;
+	// m_fd = open(File::GetUserPath(F_MEMORYWATCHERPIPE_IDX).c_str(), O_RDONLY | O_NONBLOCK);
 	m_running = true;
 	m_watcher_thread = std::thread(&MemoryWatcher::WatcherThread, this);
 }
@@ -30,9 +31,12 @@ MemoryWatcher::~MemoryWatcher()
 	if (!m_running)
 		return;
 
+	if (m_fd >= 0)
+	{
+		close(m_fd);
+	}
 	m_running = false;
 	m_watcher_thread.join();
-	close(m_fd);
 }
 
 bool MemoryWatcher::LoadAddresses(const std::string& path)
@@ -43,21 +47,50 @@ bool MemoryWatcher::LoadAddresses(const std::string& path)
 
 	std::string line;
 	while (std::getline(locations, line))
-		ParseLine(line);
+	{
+		m_fileAddresses.push_back(Address(line));
+	}
 
-	return m_values.size() > 0;
+	return m_fileAddresses.size() > 0;
 }
 
-void MemoryWatcher::ParseLine(const std::string& line)
+MemoryWatcher::Address::Address(const std::string& line)
 {
-	m_values[line] = 0;
-	m_addresses[line] = std::vector<u32>();
+	currentValue = 0;
+	offsets = std::vector<u32>();
+	bool aliasSet = false;
 
-	std::stringstream offsets(line);
-	offsets >> std::hex;
+	std::stringstream ss(line);
+    if(line.find(':') != std::string::npos)
+    {
+    	std::string a;
+    	std::getline(ss, a, ':');
+    	alias = a;
+    	aliasSet = true;
+    }
+    if(ss.str().substr(ss.tellg()).find("bits") != std::string::npos)
+    {
+    	std::string b;
+    	std::getline(ss, b, 'b');
+    	int startPos = b.find_first_not_of(' ');
+    	int endPos = b.find_first_of('b');
+    	b = b.substr(startPos, endPos - startPos);
+	    bits = X32;
+    	if(b == "8") bits = X8;
+	    if(b == "16") bits = X16;
+	    if(b == "64") bits = X64;
+
+    	std::string temp;
+    	ss >> temp;
+    }
+    if(!aliasSet)
+    {
+    	alias = ss.str().substr(ss.tellg());
+    }
+	ss >> std::hex;
 	u32 offset;
-	while (offsets >> offset)
-		m_addresses[line].push_back(offset);
+	while (ss >> offset)
+		offsets.push_back(offset);
 }
 
 bool MemoryWatcher::OpenSocket(const std::string& path)
@@ -70,18 +103,18 @@ bool MemoryWatcher::OpenSocket(const std::string& path)
 	return m_fd >= 0;
 }
 
-u32 MemoryWatcher::ChasePointer(const std::string& line)
+u32 MemoryWatcher::Address::Read()
 {
 	u32 value = 0;
-	for (u32 offset : m_addresses[line])
+	for (u32 offset : offsets)
 		value = Memory::Read_U32(value + offset);
 	return value;
 }
 
-std::string MemoryWatcher::ComposeMessage(const std::string& line, u32 value)
+std::string MemoryWatcher::ComposeMessage(const std::string& alias, u32 value)
 {
 	std::stringstream message_stream;
-	message_stream << line << '\n' << std::hex << value;
+	message_stream << alias << '\n' << std::hex << value;
 	return message_stream.str();
 }
 
@@ -89,17 +122,15 @@ void MemoryWatcher::WatcherThread()
 {
 	while (m_running)
 	{
-		for (auto& entry : m_values)
-		{
-			std::string address = entry.first;
-			u32& current_value = entry.second;
 
-			u32 new_value = ChasePointer(address);
-			if (new_value != current_value)
+		for (Address& address : m_fileAddresses)
+		{
+			u32 new_value = address.Read();
+			if (new_value != address.currentValue)
 			{
 				// Update the value
-				current_value = new_value;
-				std::string message = ComposeMessage(address, new_value);
+				address.currentValue = new_value;
+				std::string message = ComposeMessage(address.alias, new_value);
 				sendto(
 					m_fd,
 					message.c_str(),
